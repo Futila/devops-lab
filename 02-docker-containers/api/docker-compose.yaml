@@ -1,32 +1,324 @@
+# ------------------------------------------------------------------------------
+# Docker Compose
+#
+# Docker Compose allows us to define and run multiple containers as a single
+# application.
+#
+# Instead of manually running several "docker run" commands, we describe
+# our infrastructure in this file and Docker Compose creates everything for us.
+#
+# In this project we have:
+#
+#   MySQL
+#      ↓
+#   NestJS API
+#
+# Both containers will communicate through the same Docker network.
+# ------------------------------------------------------------------------------
+
 version: "3.7"
 
+# ------------------------------------------------------------------------------
+# SERVICES
+#
+# A service represents a container that Compose needs to create.
+#
+# In this project we have two services:
+#
+#   mysql      → Database
+#   api-rocket → NestJS API
+#
+# Docker Compose will create a container for each service.
+# ------------------------------------------------------------------------------
+
 services:
+  # ============================================================================
+  # MYSQL SERVICE
+  # ============================================================================
+  #
+  # This service represents our MySQL database.
+  #
+  # Instead of installing MySQL directly on our computer, Docker downloads
+  # the official MySQL image and runs it inside a container.
+  # ============================================================================
+
   mysql:
+    # Image used to create the MySQL container.
+    #
+    # Docker will look for the image "mysql:8".
+    #
+    # "mysql" = repository/image name
+    # "8"    = image tag/version
+    #
+    # If the image does not exist locally, Docker will download it
+    # from Docker Hub.
     image: mysql:8
+
+    # Explicit name for the container.
+    #
+    # Without this property, Docker Compose generates a name automatically,
+    # usually based on the project directory and service name.
+    #
+    # With this configuration, we can easily identify the container as:
+    #
+    #   mysql_db
+    #
     container_name: mysql_db
+
+    # --------------------------------------------------------------------------
+    # PORTS
+    #
+    # Maps a port from the host machine to a port inside the container.
+    #
+    # Format:
+    #
+    #   HOST_PORT:CONTAINER_PORT
+    #
+    # Therefore:
+    #
+    #   3306:3306
+    #
+    # means:
+    #
+    #   Your computer's port 3306
+    #             ↓
+    #   MySQL container's port 3306
+    #
+    # This allows applications running OUTSIDE Docker to access MySQL.
+    #
+    # IMPORTANT:
+    #
+    # The NestJS API does NOT need this port mapping to communicate with MySQL.
+    # The API can communicate with MySQL directly through the Docker network.
+    #
     ports:
       - 3306:3306
+
+    # --------------------------------------------------------------------------
+    # ENVIRONMENT
+    #
+    # Environment variables configure the MySQL image during its initialization.
+    #
+    # The official MySQL image reads these variables when the container starts.
+    # --------------------------------------------------------------------------
+
     environment:
+      # Password for the MySQL root user.
       - MYSQL_ROOT_PASSWORD=root
+
+      # Creates this database automatically when MySQL is initialized.
       - MYSQL_DATABASE=rocketseat-db
+
+      # Creates a regular MySQL user.
       - MYSQL_USER=admin
+
+      # Password for the regular MySQL user.
       - MYSQL_PASSWORD=root
+
+    # --------------------------------------------------------------------------
+    # NETWORKS
+    #
+    # Connects the MySQL container to our custom Docker network.
+    #
+    # Because the API will also be connected to this network, the two
+    # containers will be able to communicate with each other.
+    #
+    # Docker also provides an internal DNS service.
+    #
+    # This means the API can reach MySQL using a hostname instead of
+    # hard-coding an IP address.
+    #
+    # For example:
+    #
+    #   DB_HOST=mysql
+    #
+    # instead of:
+    #
+    #   DB_HOST=172.x.x.x
+    #
+    # The IP address can change when a container is recreated,
+    # but the service name remains stable.
+    #
     networks:
       - primeira-network
 
+  # ============================================================================
+  # API SERVICE
+  # ============================================================================
+  #
+  # This service represents our NestJS application.
+  #
+  # Unlike MySQL, we are not using a pre-built image.
+  # We are building the image using our Dockerfile.
+  # ============================================================================
+
   api-rocket:
+    # --------------------------------------------------------------------------
+    # BUILD
+    #
+    # Tells Docker Compose to build an image instead of simply downloading one.
+    #
+    # "context: ." means:
+    #
+    #   Use the current directory as the build context.
+    #
+    # Docker will look for the Dockerfile in this directory.
+    #
+    # It will then execute the instructions from our Dockerfile:
+    #
+    #   FROM
+    #   WORKDIR
+    #   COPY
+    #   RUN npm ci
+    #   RUN npm run build
+    #   ...
+    #
     build:
       context: .
+
+    # Explicit name for the API container.
     container_name: api-rocket
+
+    # --------------------------------------------------------------------------
+    # PORTS
+    #
+    # Maps:
+    #
+    #   Host port 3001
+    #          ↓
+    #   Container port 3000
+    #
+    # Our NestJS application listens on port 3000 inside the container.
+    #
+    # We expose it to the host through port 3001.
+    #
+    # Therefore, from your computer you can access:
+    #
+    #   http://localhost:3001
+    #
+    # while the application itself is still listening on:
+    #
+    #   port 3000
+    #
     ports:
       - 3001:3000
+
+    # --------------------------------------------------------------------------
+    # DEPENDS_ON
+    #
+    # Indicates that the API depends on the MySQL service.
+    #
+    # Docker Compose will start the MySQL service before starting the API.
+    #
+    # IMPORTANT:
+    #
+    # depends_on controls the startup order, but it does NOT guarantee
+    # that MySQL is already ready to accept connections.
+    #
+    # In other words:
+    #
+    #   MySQL container started
+    #          ≠
+    #   MySQL database ready
+    #
+    # For more robust applications, a healthcheck can be used to verify
+    # that MySQL is actually ready.
+    # --------------------------------------------------------------------------
+
     depends_on:
       - mysql
+
+    # --------------------------------------------------------------------------
+    # NETWORK
+    #
+    # Connects the NestJS API to the same network used by MySQL.
+    #
+    # Because both services are on "primeira-network", they can communicate:
+    #
+    #
+    #       primeira-network
+    #
+    #          ┌───────────────┐
+    #          │               │
+    #       API ───────────► MySQL
+    #          │               │
+    #          └───────────────┘
+    #
+    # The API can access MySQL using:
+    #
+    #   mysql:3306
+    #
+    # NOT:
+    #
+    #   localhost:3306
+    #
+    # because "localhost" inside the API container refers to the API
+    # container itself.
+    # --------------------------------------------------------------------------
+
     networks:
       - primeira-network
+
+# ------------------------------------------------------------------------------
+# NETWORK DEFINITIONS
+#
+# Here we define the Docker networks that will be used by our services.
+# ------------------------------------------------------------------------------
 
 networks:
   primeira-network:
+    # Explicitly defines the name of the Docker network.
+    #
+    # Without "name", Docker Compose can generate a name based on the
+    # project name.
+    #
+    # With this configuration, the network will be called exactly:
+    #
+    #   primeira-network
+    #
     name: primeira-network
-    external: True
+
+    # --------------------------------------------------------------------------
+    # EXTERNAL
+    #
+    # "external: true" tells Docker Compose:
+    #
+    #   "This network already exists. Do not create it."
+    #
+    # Therefore, before running:
+    #
+    #   docker compose up
+    #
+    # you must already have created the network:
+    #
+    #   docker network create primeira-network
+    #
+    # This is important because Compose will fail if the network does not exist.
+    # --------------------------------------------------------------------------
+
+    external: true
+
+    # --------------------------------------------------------------------------
+    # DRIVER
+    #
+    # "bridge" is the most common Docker network driver for containers
+    # running on the same Docker host.
+    #
+    # It allows containers connected to the network to communicate with
+    # each other.
+    #
+    # In our case:
+    #
+    #       primeira-network
+    #              │
+    #        ┌─────┴─────┐
+    #        │           │
+    #       API         MySQL
+    #        │           │
+    #        └───────────┘
+    #
+    # Docker also provides internal DNS, allowing the API to find MySQL
+    # using the service name "mysql".
+    # --------------------------------------------------------------------------
+
     driver: bridge
