@@ -43,7 +43,7 @@ COPY package.json package-lock.json ./
 #
 # We need development packages because NestJS must compile
 # the TypeScript source code into JavaScript.
-RUN npm ci
+RUN npm ci --force
 
 # Copy the rest of the application's source code.
 #
@@ -97,7 +97,7 @@ COPY package*.json ./
 #
 # After installation, clean the npm cache to reduce
 # the final image size.
-RUN npm ci --omit=dev \
+RUN npm ci --force --omit=dev \
   && npm cache clean --force
 
 # Copy only the compiled application from the build stage.
