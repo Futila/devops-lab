@@ -43,6 +43,9 @@ services:
   # ============================================================================
 
   mysql:
+    # --------------------------------------------------------------------------
+    # IMAGE
+    #
     # Image used to create the MySQL container.
     #
     # Docker will look for the image "mysql:8".
@@ -52,8 +55,13 @@ services:
     #
     # If the image does not exist locally, Docker will download it
     # from Docker Hub.
+    # --------------------------------------------------------------------------
+
     image: mysql:8
 
+    # --------------------------------------------------------------------------
+    # CONTAINER NAME
+    #
     # Explicit name for the container.
     #
     # Without this property, Docker Compose generates a name automatically,
@@ -62,8 +70,73 @@ services:
     # With this configuration, we can easily identify the container as:
     #
     #   mysql_db
-    #
+    # --------------------------------------------------------------------------
+
     container_name: mysql_db
+
+    # --------------------------------------------------------------------------
+    # VOLUMES
+    #
+    # Containers are ephemeral by nature.
+    #
+    # This means that if we remove a container, the data stored only inside
+    # that container can also be lost.
+    #
+    # This is especially dangerous for databases because MySQL stores its
+    # database files inside the container filesystem.
+    #
+    # A Docker Volume allows us to separate the DATA from the CONTAINER.
+    #
+    # In this case:
+    #
+    #   db:/var/lib/mysql
+    #
+    # means:
+    #
+    #   Docker Volume       Container directory
+    #        db          →      /var/lib/mysql
+    #
+    # "/var/lib/mysql" is the directory where the MySQL image stores
+    # its database files.
+    #
+    # The volume is managed by Docker and persists independently
+    # from the MySQL container.
+    #
+    # Therefore:
+    #
+    #   Container created
+    #          ↓
+    #   MySQL writes data
+    #          ↓
+    #   Data is stored in the "db" volume
+    #
+    # If we remove the container:
+    #
+    #   docker rm mysql_db
+    #
+    # the volume can still exist:
+    #
+    #   db
+    #
+    # When we create another MySQL container using the same volume,
+    # the database data can be reused.
+    #
+    # IMPORTANT:
+    #
+    # A volume is different from a container.
+    #
+    # Container:
+    #   Runs the MySQL process.
+    #
+    # Volume:
+    #   Stores the MySQL data.
+    #
+    # This separation is one of the most important concepts
+    # when working with stateful applications such as databases.
+    # --------------------------------------------------------------------------
+
+    volumes:
+      - db:/var/lib/mysql
 
     # --------------------------------------------------------------------------
     # PORTS
@@ -90,7 +163,8 @@ services:
     #
     # The NestJS API does NOT need this port mapping to communicate with MySQL.
     # The API can communicate with MySQL directly through the Docker network.
-    #
+    # --------------------------------------------------------------------------
+
     ports:
       - 3306:3306
 
@@ -100,6 +174,9 @@ services:
     # Environment variables configure the MySQL image during its initialization.
     #
     # The official MySQL image reads these variables when the container starts.
+    #
+    # These variables are used mainly during the first initialization of the
+    # database directory.
     # --------------------------------------------------------------------------
 
     environment:
@@ -138,7 +215,8 @@ services:
     #
     # The IP address can change when a container is recreated,
     # but the service name remains stable.
-    #
+    # --------------------------------------------------------------------------
+
     networks:
       - primeira-network
 
@@ -173,10 +251,18 @@ services:
     #   RUN npm run build
     #   ...
     #
+    # The resulting image is then used to create the API container.
+    # --------------------------------------------------------------------------
+
     build:
       context: .
 
+    # --------------------------------------------------------------------------
+    # CONTAINER NAME
+    #
     # Explicit name for the API container.
+    # --------------------------------------------------------------------------
+
     container_name: api-rocket
 
     # --------------------------------------------------------------------------
@@ -199,7 +285,8 @@ services:
     # while the application itself is still listening on:
     #
     #   port 3000
-    #
+    # --------------------------------------------------------------------------
+
     ports:
       - 3001:3000
 
@@ -263,10 +350,27 @@ services:
 # NETWORK DEFINITIONS
 #
 # Here we define the Docker networks that will be used by our services.
+#
+# A Docker Network allows containers to communicate with each other.
+#
+# In this project:
+#
+#       primeira-network
+#              │
+#        ┌─────┴─────┐
+#        │           │
+#       API         MySQL
+#        │           │
+#        └───────────┘
+#
+# Both containers are connected to the same network.
 # ------------------------------------------------------------------------------
 
 networks:
   primeira-network:
+    # --------------------------------------------------------------------------
+    # NETWORK NAME
+    #
     # Explicitly defines the name of the Docker network.
     #
     # Without "name", Docker Compose can generate a name based on the
@@ -275,7 +379,8 @@ networks:
     # With this configuration, the network will be called exactly:
     #
     #   primeira-network
-    #
+    # --------------------------------------------------------------------------
+
     name: primeira-network
 
     # --------------------------------------------------------------------------
@@ -307,18 +412,109 @@ networks:
     # It allows containers connected to the network to communicate with
     # each other.
     #
-    # In our case:
+    # Docker also provides internal DNS for containers connected to the
+    # same network.
     #
-    #       primeira-network
-    #              │
-    #        ┌─────┴─────┐
-    #        │           │
-    #       API         MySQL
-    #        │           │
-    #        └───────────┘
+    # This allows our API to find MySQL using:
     #
-    # Docker also provides internal DNS, allowing the API to find MySQL
-    # using the service name "mysql".
+    #   mysql
+    #
+    # instead of using a dynamic IP address.
     # --------------------------------------------------------------------------
 
     driver: bridge
+
+# ------------------------------------------------------------------------------
+# VOLUME DEFINITIONS
+#
+# Here we declare the Docker volumes used by our services.
+#
+# The "db" volume is used by the MySQL service:
+#
+#   db:/var/lib/mysql
+#
+# The left side:
+#
+#   db
+#
+# is the name of the Docker Volume.
+#
+# The right side:
+#
+#   /var/lib/mysql
+#
+# is the directory inside the MySQL container where MySQL stores
+# its database files.
+#
+# ------------------------------------------------------------------------------
+#
+# WHY DO WE NEED A VOLUME?
+#
+# Containers are ephemeral.
+#
+# If we remove the MySQL container, the container's filesystem is removed.
+#
+# However, the database data should survive the lifecycle of the container.
+#
+# The volume separates:
+#
+#   Application / Process
+#             │
+#             ▼
+#        MySQL Container
+#
+# from:
+#
+#        Database Data
+#             │
+#             ▼
+#          db Volume
+#
+# Therefore, we can remove and recreate the MySQL container without
+# necessarily losing the database data.
+#
+# ------------------------------------------------------------------------------
+#
+# USEFUL COMMANDS
+#
+# List all Docker volumes:
+#
+#   docker volume ls
+#
+# Inspect the volume:
+#
+#   docker volume inspect db
+#
+# Remove the volume:
+#
+#   docker volume rm db
+#
+# IMPORTANT:
+#
+# Removing the volume removes the data stored in it.
+#
+# Be especially careful with:
+#
+#   docker compose down -v
+#
+# because the "-v" option tells Docker Compose to remove the volumes
+# associated with the application.
+#
+# In this project:
+#
+#   docker compose down
+#
+# → removes the containers
+# → keeps the "db" volume
+#
+# While:
+#
+#   docker compose down -v
+#
+# → removes the containers
+# → removes the "db" volume
+# → database data is lost
+# ------------------------------------------------------------------------------
+
+volumes:
+  db:
